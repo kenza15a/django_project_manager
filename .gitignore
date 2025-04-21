@@ -1,0 +1,30 @@
+# Environnement virtuel
+env/
+venv/
+ENV/
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+
+# Fichiers de base de données SQLite
+*.sqlite3
+
+# Fichiers d’environnement local
+.env
+*.env
+
+# Dossiers d'IDE
+.vscode/
+.idea/
+
+# Fichiers de logs
+*.log
+
+# Migrations (optionnel si tu veux les régénérer)
+# **Attention** : ne pas ignorer migrations/ si tu veux garder l'historique !
+# project_manager/migrations/
+
+# Fichiers système
+.DS_Store
+Thumbs.db
