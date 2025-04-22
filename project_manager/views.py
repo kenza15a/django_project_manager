@@ -10,7 +10,9 @@ from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions
 from django_filters.rest_framework import DjangoFilterBackend
-
+from django.contrib.auth import get_user_model
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import IsAuthenticatedOrReadOnly
 
 class StandardPagination(PageNumberPagination):
     page_size = 5
@@ -29,18 +31,31 @@ class UserViewSet(viewsets.ModelViewSet):
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticatedOrReadOnly]
     queryset = Project.objects.all()
     serializer_class = ProjectSerializer
     pagination_class = StandardPagination
     filter_backends = [filters.OrderingFilter,
                        filters.SearchFilter, DjangoFilterBackend]
-
+    
     search_fields = ['title']
     ordering_fields = ['title', 'created_at']
     filterset_fields = ['owner']
 
     def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
+        user = self.request.user
+
+        # S'assurer que l'utilisateur est connecté
+        if not user or not user.is_authenticated:
+            raise PermissionDenied("Authentication required to create a project.")
+
+        # Si c'est un SimpleLazyObject, le convertir
+        if not isinstance(user, User):
+            user = User.objects.get(pk=user.pk)
+
+        # Créer le projet
+        serializer.save(owner=user)
+
 
 # vues personnalisées
 # Vue pour /api/users/register/
@@ -86,7 +101,7 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_object(self):
         obj = get_object_or_404(
             Project,
-            id=self.kwargs['id'],
+            id=self.kwargs['id'], 
             owner__username=self.kwargs['username']
         )
         self.check_object_permissions(self.request, obj)
