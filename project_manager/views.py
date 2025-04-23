@@ -40,7 +40,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
     
     search_fields = ['title']
     ordering_fields = ['title', 'created_at']
-    filterset_fields = ['owner']
+    filterset_fields = ['owner','title']
 
     def perform_create(self, serializer):
         user = self.request.user
