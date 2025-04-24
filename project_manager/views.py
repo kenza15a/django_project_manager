@@ -15,6 +15,11 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from django.contrib.auth import authenticate
+from rest_framework.authtoken.models import Token
 
 
 class StandardPagination(PageNumberPagination):
@@ -206,3 +211,40 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
         self.check_object_permissions(self.request, obj)
         return obj
+# gestion des views login pour le frontend un plus plus :D
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def login_view(request):
+
+    username = request.data.get("username")
+    password = request.data.get("password")
+    print("LOGIN DATA:", request.data)
+    user = authenticate(username=username, password=password)
+    if user is not None:
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response({
+            "token": token.key,
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "is_superuser": user.is_superuser
+            }
+        })
+    return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
+# a vue /api/me/ pour récupérer l'utilisateur connecté via token
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def me_view(request):
+    user = request.user
+    return Response({
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "is_superuser": user.is_superuser
+    })
