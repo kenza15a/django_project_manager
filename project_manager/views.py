@@ -10,6 +10,16 @@ from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions
 from django_filters.rest_framework import DjangoFilterBackend
+from django.contrib.auth import get_user_model
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from django.contrib.auth import authenticate
+from rest_framework.authtoken.models import Token
 
 
 class StandardPagination(PageNumberPagination):
@@ -27,8 +37,47 @@ class UserViewSet(viewsets.ModelViewSet):
     search_fields = ['username', 'email']
     ordering_fields = ['username', 'email']
 
+    @swagger_auto_schema(
+        operation_summary="Create a new user",
+        request_body=UserSerializer,
+        responses={201: UserSerializer}
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_summary="Retrieve a user by ID",
+        responses={200: UserSerializer}
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_summary="Update user data completely",
+        request_body=UserSerializer,
+        responses={200: UserSerializer}
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_summary="Partially update user data",
+        request_body=UserSerializer,
+        responses={200: UserSerializer}
+    )
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_summary="Delete a user",
+        responses={204: 'No Content'}
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
 
 class ProjectViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticatedOrReadOnly]
     queryset = Project.objects.all()
     serializer_class = ProjectSerializer
     pagination_class = StandardPagination
@@ -37,16 +86,81 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     search_fields = ['title']
     ordering_fields = ['title', 'created_at']
-    filterset_fields = ['owner']
+    filterset_fields = ['owner', 'title']
+
+    @swagger_auto_schema(
+        operation_summary="List all projects",
+        operation_description="""
+        Returns a paginated list of all projects.
+        Supports filtering by owner and title,
+        searching by title, and ordering by title or creation date.
+        """,
+        responses={200: ProjectSerializer(many=True)}
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_summary="Create a new project",
+        operation_description="Only authenticated users can create projects.",
+        request_body=ProjectSerializer,
+        responses={201: ProjectSerializer}
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_summary="Retrieve project details",
+        responses={200: ProjectSerializer, 404: "Not Found"}
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_summary="Fully update a project",
+        request_body=ProjectSerializer,
+        responses={200: ProjectSerializer}
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_summary="Partially update a project",
+        request_body=ProjectSerializer,
+        responses={200: ProjectSerializer}
+    )
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_summary="Delete a project",
+        responses={204: "No Content"}
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
 
     def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
+        user = self.request.user
+
+        # S'assurer que l'utilisateur est connecté
+        if not user or not user.is_authenticated:
+            raise PermissionDenied(
+                "Authentication required to create a project.")
+
+        if not isinstance(user, User):
+            user = User.objects.get(pk=user.pk)
+
+        serializer.save(owner=user)
 
 # vues personnalisées
 # Vue pour /api/users/register/
 
 
 class RegisterUserView(APIView):
+    @swagger_auto_schema(
+        request_body=UserSerializer,
+        responses={201: UserSerializer, 400: "Bad Request"}
+    )
     def post(self, request):
         serializer = UserSerializer(data=request.data)
         if serializer.is_valid():
@@ -83,6 +197,12 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsOwnerOrReadOnly]
     lookup_field = 'id'
 
+    @swagger_auto_schema(
+        responses={200: ProjectSerializer, 404: 'Not Found'}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
     def get_object(self):
         obj = get_object_or_404(
             Project,
@@ -91,3 +211,40 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
         self.check_object_permissions(self.request, obj)
         return obj
+# gestion des views login pour le frontend un plus plus :D
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def login_view(request):
+
+    username = request.data.get("username")
+    password = request.data.get("password")
+    print("LOGIN DATA:", request.data)
+    user = authenticate(username=username, password=password)
+    if user is not None:
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response({
+            "token": token.key,
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "is_superuser": user.is_superuser
+            }
+        })
+    return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
+# a vue /api/me/ pour récupérer l'utilisateur connecté via token
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def me_view(request):
+    user = request.user
+    return Response({
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "is_superuser": user.is_superuser
+    })
